@@ -201,6 +201,8 @@ static const char *menu_poom_pcap_wifi_capture_label_(poom_pcap_wifi_capture_t c
             return "HANDSHAKE";
         case POOM_PCAP_WIFI_CAPTURE_WPS:
             return "WPS";
+        case POOM_PCAP_WIFI_CAPTURE_SAE:
+            return "SAE";
         default:
             return "RAW";
     }
@@ -255,6 +257,7 @@ static void menu_poom_pcap_draw_wifi_type_(void)
         POOM_PCAP_WIFI_CAPTURE_EAPOL,
         POOM_PCAP_WIFI_CAPTURE_HANDSHAKE,
         POOM_PCAP_WIFI_CAPTURE_WPS,
+        POOM_PCAP_WIFI_CAPTURE_SAE,
     };
 
     poom_arduboy_clear();
@@ -562,6 +565,7 @@ static esp_err_t menu_poom_pcap_start_capture_(void)
 
         if ((s_menu_poom_pcap_wifi_capture == POOM_PCAP_WIFI_CAPTURE_PROBE) ||
             (s_menu_poom_pcap_wifi_capture == POOM_PCAP_WIFI_CAPTURE_DEAUTH) ||
+            (s_menu_poom_pcap_wifi_capture == POOM_PCAP_WIFI_CAPTURE_SAE) ||
             (s_menu_poom_pcap_wifi_capture == POOM_PCAP_WIFI_CAPTURE_BEACON))
         {
             filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT;
@@ -791,6 +795,7 @@ static void menu_poom_pcap_button_cb_(const poom_sbus_msg_t *msg, void *user_ctx
             POOM_PCAP_WIFI_CAPTURE_EAPOL,
             POOM_PCAP_WIFI_CAPTURE_HANDSHAKE,
             POOM_PCAP_WIFI_CAPTURE_WPS,
+            POOM_PCAP_WIFI_CAPTURE_SAE,
         };
 
         int sel_idx = 0;
