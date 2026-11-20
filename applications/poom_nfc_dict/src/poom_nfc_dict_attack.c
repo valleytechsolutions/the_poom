@@ -103,12 +103,74 @@ static bool poom_nfc_dict_attack_sector_keytype_(
     return false;
 }
 
+/* Emit a key-found progress event if the sector key is now known. */
+static void poom_nfc_dict_emit_found_(
+    poom_nfc_dict_attack_progress_cb_t progress_cb,
+    void* user_ctx,
+    uint8_t sector,
+    uint8_t sectors,
+    poom_mifare_key_type_t key_type,
+    uint32_t attempts)
+{
+    uint8_t key[POOM_NFC_DICT_KEY_SIZE];
+    if(progress_cb == NULL)
+    {
+        return;
+    }
+    if(!poom_mifare_classic_get_sector_key(sector, key_type, key))
+    {
+        return;
+    }
+    poom_nfc_dict_attack_progress_t ev;
+    ev.sector        = sector;
+    ev.sectors       = sectors;
+    ev.key_type      = (uint8_t)key_type;
+    ev.key_found     = true;
+    ev.key           = key;
+    ev.auth_attempts = attempts;
+    progress_cb(&ev, user_ctx);
+}
+
+/* Emit a sector-start progress event (no key). */
+static void poom_nfc_dict_emit_sector_(
+    poom_nfc_dict_attack_progress_cb_t progress_cb,
+    void* user_ctx,
+    uint8_t sector,
+    uint8_t sectors,
+    uint32_t attempts)
+{
+    if(progress_cb == NULL)
+    {
+        return;
+    }
+    poom_nfc_dict_attack_progress_t ev;
+    ev.sector        = sector;
+    ev.sectors       = sectors;
+    ev.key_type      = (uint8_t)POOM_MIFARE_KEY_A;
+    ev.key_found     = false;
+    ev.key           = NULL;
+    ev.auth_attempts = attempts;
+    progress_cb(&ev, user_ctx);
+}
+
 bool poom_nfc_dict_attack_run(const poom_nfc_dict_t* dict,
                               bool try_b,
                               bool include_builtin,
                               poom_nfc_dict_attack_cancel_cb_t cancel_cb,
                               void* user_ctx,
                               poom_nfc_dict_attack_result_t* out)
+{
+    return poom_nfc_dict_attack_run_ex(dict, try_b, include_builtin, cancel_cb,
+                                       NULL, user_ctx, out);
+}
+
+bool poom_nfc_dict_attack_run_ex(const poom_nfc_dict_t* dict,
+                                 bool try_b,
+                                 bool include_builtin,
+                                 poom_nfc_dict_attack_cancel_cb_t cancel_cb,
+                                 poom_nfc_dict_attack_progress_cb_t progress_cb,
+                                 void* user_ctx,
+                                 poom_nfc_dict_attack_result_t* out)
 {
     poom_nfc_dict_attack_result_t res;
     uint8_t sectors;
@@ -167,6 +229,9 @@ bool poom_nfc_dict_attack_run(const poom_nfc_dict_t* dict,
             poom_nfc_dict_first_block_of_sector_(sectors, s);
         uint8_t tmp[POOM_NFC_DICT_KEY_SIZE];
 
+        poom_nfc_dict_emit_sector_(progress_cb, user_ctx, s, sectors,
+                                   res.auth_attempts);
+
         /* Key A */
         if(!poom_mifare_classic_get_sector_key(s, POOM_MIFARE_KEY_A, tmp))
         {
@@ -174,6 +239,8 @@ bool poom_nfc_dict_attack_run(const poom_nfc_dict_t* dict,
                 block, POOM_MIFARE_KEY_A, dict, include_builtin, cancel_cb,
                 user_ctx, &res.auth_attempts);
         }
+        poom_nfc_dict_emit_found_(progress_cb, user_ctx, s, sectors,
+                                  POOM_MIFARE_KEY_A, res.auth_attempts);
 
         /* Key B */
         if(try_b &&
@@ -187,6 +254,11 @@ bool poom_nfc_dict_attack_run(const poom_nfc_dict_t* dict,
             (void)poom_nfc_dict_attack_sector_keytype_(
                 block, POOM_MIFARE_KEY_B, dict, include_builtin, cancel_cb,
                 user_ctx, &res.auth_attempts);
+        }
+        if(try_b)
+        {
+            poom_nfc_dict_emit_found_(progress_cb, user_ctx, s, sectors,
+                                      POOM_MIFARE_KEY_B, res.auth_attempts);
         }
     }
 

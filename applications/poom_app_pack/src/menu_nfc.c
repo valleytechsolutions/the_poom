@@ -2,6 +2,7 @@
 // Copyright (c) 2026 THE POOM
 
 #include "menu_nfc.h"
+#include "menu_nfc_keys.h"
 
 #include <errno.h>
 #include <ctype.h>
@@ -144,6 +145,7 @@ typedef enum
     MENU_NFC_OPT_AMIIBO,
     MENU_NFC_OPT_EMULATE,
     MENU_NFC_OPT_RESTORE,
+    MENU_NFC_OPT_KEYS,
     MENU_NFC_OPT_STORAGE,
     MENU_NFC_OPT_COUNT,
 } menu_nfc_opt_t;
@@ -183,6 +185,7 @@ static const char* menu_nfc_main_option_label_(menu_nfc_opt_t option)
         case MENU_NFC_OPT_AMIIBO: return "AMIIBO";
         case MENU_NFC_OPT_EMULATE: return "EMULATE";
         case MENU_NFC_OPT_RESTORE: return "RESTORE MFC";
+        case MENU_NFC_OPT_KEYS: return "KEYS";
         case MENU_NFC_OPT_STORAGE: return "STORAGE";
         default: return "";
     }
@@ -198,6 +201,8 @@ static bool s_menu_nfc_mifare_read_requested = false;
 static volatile bool s_menu_nfc_t2t_read_active = false;
 static bool s_menu_nfc_t2t_read_requested = false;
 static bool s_menu_nfc_restore_requested = false;
+static bool s_menu_nfc_launch_keys = false;    /* hand off to the KEYS scene   */
+static bool s_menu_nfc_suppress_resume = false; /* skip ZEN resume on handoff  */
 static TaskHandle_t s_menu_nfc_ui_task = NULL;
 static char s_menu_nfc_sbus_user[] = "menu_nfc";
 static bool s_menu_nfc_input_dirty = false;
@@ -5978,8 +5983,11 @@ static void menu_nfc_exit_(void)
     menu_nfc_scan_meta_release_();
     menu_nfc_amiibo_ctx_release_();
 
-    const uint8_t token = 1U;
-    (void)poom_sbus_publish(POOM_MENU_RESUME_TOPIC, &token, sizeof(token), 0);
+    if(!s_menu_nfc_suppress_resume)
+    {
+        const uint8_t token = 1U;
+        (void)poom_sbus_publish(POOM_MENU_RESUME_TOPIC, &token, sizeof(token), 0);
+    }
 }
 
 /**
@@ -6160,6 +6168,15 @@ static void menu_nfc_button_cb_(const poom_sbus_msg_t *msg, void *user_ctx)
             {
                 menu_nfc_sd_load_items_(MENU_NFC_SD_ITEM_MFC_DUMP);
                 s_state = MENU_NFC_STATE_RESTORE_SD_LIST;
+            }
+            else if(s_opt == MENU_NFC_OPT_KEYS)
+            {
+                /* Hand off to the standalone MIFARE key-recovery scene. Tear
+                 * this menu down without re-attaching ZEN; the scene owns the
+                 * display + buttons and returns to ZEN when it exits. */
+                s_menu_nfc_launch_keys = true;
+                s_menu_nfc_suppress_resume = true;
+                s_menu_nfc_exit_requested = true;
             }
             else if (s_opt == MENU_NFC_OPT_STORAGE)
             {
@@ -6661,7 +6678,14 @@ static void menu_nfc_ui_task_(void *arg)
     {
         if (s_menu_nfc_exit_requested)
         {
+            const bool launch_keys = s_menu_nfc_launch_keys;
             menu_nfc_exit_();
+            s_menu_nfc_launch_keys = false;
+            s_menu_nfc_suppress_resume = false;
+            if(launch_keys)
+            {
+                menu_nfc_keys_show();
+            }
             break;
         }
 
@@ -6821,6 +6845,8 @@ void menu_nfc_show(void)
 
     s_menu_nfc_active = true;
     s_menu_nfc_exit_requested = false;
+    s_menu_nfc_launch_keys = false;
+    s_menu_nfc_suppress_resume = false;
     s_menu_nfc_scan_requested = false;
     s_menu_nfc_scan_cancel_requested = false;
     s_menu_nfc_mifare_read_requested = false;

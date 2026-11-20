@@ -123,6 +123,46 @@ typedef struct
 typedef bool (*poom_nfc_dict_attack_cancel_cb_t)(void* user_ctx);
 
 /**
+ * @brief Live progress event emitted during a dictionary attack.
+ *
+ * Lets an on-device UI render keys as they are recovered, matching the
+ * Chameleon Ultra / Flipper "keys appear live on screen" experience.
+ * Two kinds of event are emitted:
+ *   - sector start: @ref key_found is false, @ref sector / @ref sectors set;
+ *   - key found: @ref key_found is true and @ref key points at the 6 recovered
+ *     key bytes for (@ref sector, @ref key_type). @ref key is valid only for
+ *     the duration of the callback.
+ */
+typedef struct
+{
+    uint8_t  sector;        /* sector this event concerns                     */
+    uint8_t  sectors;       /* total sectors on the bound card                */
+    uint8_t  key_type;      /* poom_mifare_key_type_t of this event           */
+    bool     key_found;     /* true for a key-found event, false for progress */
+    const uint8_t* key;     /* 6 key bytes when key_found, else NULL          */
+    uint32_t auth_attempts; /* running AUTH attempt count                     */
+} poom_nfc_dict_attack_progress_t;
+
+/** Progress sink; invoked on the calling task. Keep it short (UI redraw). */
+typedef void (*poom_nfc_dict_attack_progress_cb_t)(
+    const poom_nfc_dict_attack_progress_t* ev, void* user_ctx);
+
+/**
+ * @brief Dictionary attack with live per-sector/per-key progress reporting.
+ *
+ * Identical to poom_nfc_dict_attack_run() but also invokes @p progress_cb as
+ * each sector is started and each key recovered, so callers can draw a live
+ * key table. @p progress_cb and @p cancel_cb share @p user_ctx.
+ */
+bool poom_nfc_dict_attack_run_ex(const poom_nfc_dict_t* dict,
+                                 bool try_b,
+                                 bool include_builtin,
+                                 poom_nfc_dict_attack_cancel_cb_t cancel_cb,
+                                 poom_nfc_dict_attack_progress_cb_t progress_cb,
+                                 void* user_ctx,
+                                 poom_nfc_dict_attack_result_t* out);
+
+/**
  * @brief Run a MIFARE Classic dictionary attack across every sector.
  *
  * Requires a card to be present (the RF field active and a MIFARE Classic
