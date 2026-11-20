@@ -42,6 +42,9 @@
 #ifndef BTN_B
 #define BTN_B (1U)
 #endif
+#ifndef BTN_LEFT
+#define BTN_LEFT (2U)
+#endif
 #ifndef BTN_UP
 #define BTN_UP (4U)
 #endif
@@ -163,7 +166,7 @@ static void menu_nfc_dict_draw_(void)
     else
     {
         poom_arduboy_set_cursor(0, 54);
-        (void)poom_arduboy_print(F("A:LOAD UP/DN B:BK"));
+        (void)poom_arduboy_print(F("A:LOAD <:CLR B:BK"));
     }
     poom_arduboy_display();
 }
@@ -333,6 +336,11 @@ static void menu_nfc_dict_ui_task_(void* arg)
             {
                 menu_nfc_dict_do_load_((uint8_t)(s_sel - 1U));
             }
+            redraw = true;
+        }
+        else if(msg.button == BTN_LEFT)
+        {
+            menu_nfc_dict_do_clear_();
             redraw = true;
         }
         else if(msg.button == BTN_B)
