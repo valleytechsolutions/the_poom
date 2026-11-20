@@ -49,6 +49,12 @@
 #ifndef BTN_B
 #define BTN_B (1U)
 #endif
+#ifndef BTN_LEFT
+#define BTN_LEFT (2U)
+#endif
+#ifndef BTN_RIGHT
+#define BTN_RIGHT (3U)
+#endif
 #ifndef BTN_UP
 #define BTN_UP (4U)
 #endif
@@ -64,6 +70,7 @@ typedef enum
     KEYS_STATE_IDLE = 0,
     KEYS_STATE_RECOVER,
     KEYS_STATE_DONE,
+    KEYS_STATE_VIEW,
 } menu_nfc_keys_state_t;
 
 typedef struct
@@ -95,6 +102,7 @@ static uint8_t s_found_b = 0U;
 static uint8_t s_unlocked = 0U;
 static char s_card_name[12] = "";
 static char s_status[22] = "READY";
+static uint16_t s_view_block = 0U;  /* block browsed in KEYS_STATE_VIEW       */
 
 static void menu_nfc_keys_button_cb_(const poom_sbus_msg_t* msg, void* user_ctx);
 static void menu_nfc_keys_ui_task_(void* arg);
@@ -233,7 +241,56 @@ static void menu_nfc_keys_draw_done_(void)
     (void)poom_arduboy_print(s_status);
 
     poom_arduboy_set_cursor(0, 56);
-    (void)poom_arduboy_print(F("A:DUMP UP:AGAIN"));
+    (void)poom_arduboy_print(F("A:DUMP >:DATA"));
+    poom_arduboy_set_cursor(97, 56);
+    (void)poom_arduboy_print(F("B:BK"));
+    poom_arduboy_display();
+}
+
+/* On-screen block/data viewer: read the selected block with the recovered
+ * keys and show its 16 bytes. Requires RF still live (left up after recover). */
+static void menu_nfc_keys_draw_view_(void)
+{
+    char line[40];
+    uint8_t data[16];
+    const int sec = poom_mifare_classic_sector_for_block((uint8_t)s_view_block);
+
+    poom_arduboy_clear();
+    menu_nfc_keys_header_("MIFARE DATA");
+
+    if(sec >= 0)
+    {
+        (void)snprintf(line, sizeof(line), "Blk %u  Sec %d",
+                       (unsigned)s_view_block, sec);
+    }
+    else
+    {
+        (void)snprintf(line, sizeof(line), "Blk %u", (unsigned)s_view_block);
+    }
+    poom_arduboy_set_cursor(2, 13);
+    (void)poom_arduboy_print(line);
+
+    if(poom_mifare_classic_read_block((uint8_t)s_view_block, data))
+    {
+        (void)snprintf(line, sizeof(line), "%02X%02X%02X%02X %02X%02X%02X%02X",
+                       data[0], data[1], data[2], data[3],
+                       data[4], data[5], data[6], data[7]);
+        poom_arduboy_set_cursor(2, 26);
+        (void)poom_arduboy_print(line);
+        (void)snprintf(line, sizeof(line), "%02X%02X%02X%02X %02X%02X%02X%02X",
+                       data[8], data[9], data[10], data[11],
+                       data[12], data[13], data[14], data[15]);
+        poom_arduboy_set_cursor(2, 36);
+        (void)poom_arduboy_print(line);
+    }
+    else
+    {
+        poom_arduboy_set_cursor(2, 30);
+        (void)poom_arduboy_print(F("<no key / locked>"));
+    }
+
+    poom_arduboy_set_cursor(0, 56);
+    (void)poom_arduboy_print(F("UP/DN:BLK"));
     poom_arduboy_set_cursor(97, 56);
     (void)poom_arduboy_print(F("B:BK"));
     poom_arduboy_display();
@@ -557,6 +614,15 @@ static void menu_nfc_keys_ui_task_(void* arg)
                 menu_nfc_keys_dump_();
                 menu_nfc_keys_draw_done_();
             }
+            else if(msg.button == BTN_RIGHT)
+            {
+                if(s_unlocked > 0U)
+                {
+                    s_view_block = 0U;
+                    s_state = KEYS_STATE_VIEW;
+                    menu_nfc_keys_draw_view_();
+                }
+            }
             else if(msg.button == BTN_UP)
             {
                 menu_nfc_keys_stop_rf_();
@@ -567,6 +633,31 @@ static void menu_nfc_keys_ui_task_(void* arg)
             else if(msg.button == BTN_B)
             {
                 s_exit_requested = true;
+            }
+        }
+        else if(s_state == KEYS_STATE_VIEW)
+        {
+            const uint16_t maxb = poom_mifare_classic_get_max_block();
+            if(msg.button == BTN_DOWN)
+            {
+                if((uint16_t)(s_view_block + 1U) < maxb)
+                {
+                    s_view_block++;
+                }
+                menu_nfc_keys_draw_view_();
+            }
+            else if(msg.button == BTN_UP)
+            {
+                if(s_view_block > 0U)
+                {
+                    s_view_block--;
+                }
+                menu_nfc_keys_draw_view_();
+            }
+            else if(msg.button == BTN_B)
+            {
+                s_state = KEYS_STATE_DONE;
+                menu_nfc_keys_draw_done_();
             }
         }
     }
