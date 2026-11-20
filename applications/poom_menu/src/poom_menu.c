@@ -35,6 +35,7 @@
 #include "menu_cli_ot.h"
 #endif
 #include "menu_cli_web.h"
+#include "menu_handshake_crack.h"
 #include "menu_control_music.h"
 #include "menu_deauth.h"
 #include "menu_deauth_detector.h"
@@ -88,6 +89,7 @@
 #include "esp_system.h"
 #include "esp_sleep.h"
 #include "esp_timer.h"
+#include "soc/soc_caps.h"
 #include "driver/gpio.h"
 #include "nvs.h"
 #include "nvs_flash.h"
@@ -562,6 +564,13 @@ static void action_wifi_detector_(void)
     menu_wifi_detector_show();
 }
 
+static void action_handshake_crack_(void)
+{
+    detach_menu_();
+    vTaskDelay(pdMS_TO_TICKS(180U));
+    menu_handshake_crack_show();
+}
+
 static void action_poomgotchi_(void)
 {
     detach_menu_();
@@ -772,9 +781,16 @@ static void power_off_enter_deep_sleep_(void)
         (void)sd_card_unmount();
     }
 
-    if ((gpio_config(&wake_cfg) != ESP_OK) ||
-        (esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL) != ESP_OK) ||
-        (esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(wake_mask, ESP_GPIO_WAKEUP_GPIO_LOW) != ESP_OK))
+    const bool wake_ok =
+        (gpio_config(&wake_cfg) == ESP_OK) &&
+        (esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL) == ESP_OK) &&
+#if SOC_GPIO_SUPPORT_HP_PERIPH_PD_SLEEP_WAKEUP
+        (esp_sleep_enable_gpio_wakeup_on_hp_periph_powerdown(wake_mask, ESP_GPIO_WAKEUP_GPIO_LOW) == ESP_OK);
+#else
+        /* The POOM release SDK snapshot predates the API rename. */
+        (esp_deep_sleep_enable_gpio_wakeup(wake_mask, ESP_GPIO_WAKEUP_GPIO_LOW) == ESP_OK);
+#endif
+    if (!wake_ok)
     {
         /* Re-enable the screen so a configuration failure is visible. */
         poom_arduboy_set_display_enabled(true);
@@ -1196,6 +1212,7 @@ static const poom_menu_item_t s_apps_beast[] = {
     {"BLE DETECT", action_ble_detector_},
     {"FIND MY BEEP", action_findmy_beep_},
     {"WIFI DETECT", action_wifi_detector_},
+    {"CRACK HS", action_handshake_crack_},
     {"POOMGOTCHI", action_poomgotchi_},
     {"SNIFFER", action_pcap_snf_},
     {"SNNIFER RT", action_sniffer_rt_},
