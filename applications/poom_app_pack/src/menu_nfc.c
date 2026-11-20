@@ -27,6 +27,7 @@
 #include "input_events.h"
 #include "poom_sbus.h"
 
+#include "poom_nfc_dict.h"
 #include "poom_nfc_dump.h"
 #include "poom_nfc_card_ident.h"
 #include "poom_nfc_controller.h"
@@ -2485,6 +2486,14 @@ static bool menu_nfc_prepare_mifare_scan_view_(nfc_card_type_t card_type)
     menu_nfc_draw_busy_progress_("READING MIFARE", "Unlocking...", 2U, 2U);
     (void)poom_mifare_classic_discover_default_keys_cancelable(
         true, menu_nfc_mifare_cancel_requested_, NULL);
+    /* Also try a user dictionary loaded from the SD card (if any). The
+     * built-ins were already tried above, so only the SD keys are added. */
+    if(poom_nfc_dict_count(poom_nfc_dict_active()) > 0U)
+    {
+        (void)poom_nfc_dict_attack_run(poom_nfc_dict_active(), true, false,
+                                       menu_nfc_mifare_cancel_requested_, NULL,
+                                       NULL);
+    }
     if(s_menu_nfc_scan_cancel_requested || !s_menu_nfc_active ||
        s_menu_nfc_exit_requested)
     {

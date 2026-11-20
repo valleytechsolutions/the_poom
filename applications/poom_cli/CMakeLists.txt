@@ -14,6 +14,7 @@ set(cli_requires
     ir
     nvs_flash
     poom_nfc
+    poom_nfc_dict
     poom_secrets_store
     poom_pcap
     poom_http_load_test

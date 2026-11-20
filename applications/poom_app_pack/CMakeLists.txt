@@ -45,6 +45,7 @@ set(POOM_APP_PACK_REQUIRES
     ir
     mbedtls
     poom_nfc
+    poom_nfc_dict
     poom_picopass
     poom_motion_midi
     poom_ble_keyboard

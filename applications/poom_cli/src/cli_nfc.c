@@ -10,6 +10,7 @@
 #include "poom_nfc_emv.h"
 #include "poom_nfc_iso14443_4.h"
 #include "poom_nfc_iso7816.h"
+#include "poom_nfc_dict.h"
 #include "poom_nfc_mifare_classic.h"
 #include "poom_nfc_profile_store.h"
 #include "poom_nfc_store.h"
@@ -1183,6 +1184,19 @@ static struct
     struct arg_lit* try_b;
     struct arg_end* end;
 } nfc_mfc_dump_args;
+
+static struct
+{
+    struct arg_str* file;
+    struct arg_end* end;
+} nfc_mfc_dict_file_args;
+
+static struct
+{
+    struct arg_lit* try_b;
+    struct arg_str* file;
+    struct arg_end* end;
+} nfc_mfc_dict_attack_args;
 
 static struct
 {
@@ -4078,6 +4092,185 @@ static int cmd_nfc_st25tb(int argc, char** argv)
  *
  * @return void
  */
+/* --- MIFARE SD key dictionaries (Chameleon-Ultra-style ".dic" files) --- */
+
+static bool cmd_nfc_mfc_dict_list_cb_(const char* filename,
+                                      size_t size_bytes,
+                                      void* user_ctx)
+{
+    unsigned* n = (unsigned*)user_ctx;
+    (*n)++;
+    printf("  %2u. %-32s %6u bytes\r\n", *n, filename, (unsigned)size_bytes);
+    return true;
+}
+
+static int cmd_nfc_mfc_dict_list(int argc, char** argv)
+{
+    (void)argc;
+    (void)argv;
+    unsigned n = 0U;
+    esp_err_t err = poom_nfc_dict_list_files(cmd_nfc_mfc_dict_list_cb_, &n);
+
+    if(err == ESP_ERR_NOT_FOUND)
+    {
+        printf("  no dictionaries. Dir %s%s is empty or missing. "
+               "Tip: run nfc-mfc-dict-save to create defaults.\r\n",
+               SD_CARD_PATH, POOM_NFC_DICT_DIR_REL);
+        return 0;
+    }
+    if(err != ESP_OK)
+    {
+        printf("  dict list failed (err=%d). Tip: ensure the SD card is "
+               "mounted.\r\n",
+               err);
+        return 1;
+    }
+    if(n == 0U)
+    {
+        printf("  no .dic files in %s%s.\r\n", SD_CARD_PATH,
+               POOM_NFC_DICT_DIR_REL);
+    }
+    else
+    {
+        printf("  %u dictionary file(s). Load with: nfc-mfc-dict-load "
+               "<file>\r\n",
+               n);
+    }
+    return 0;
+}
+
+static int cmd_nfc_mfc_dict_save(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&nfc_mfc_dict_file_args);
+    const char* file = NULL;
+    size_t written = 0U;
+
+    if(nerrors != 0)
+    {
+        arg_print_errors(stderr, nfc_mfc_dict_file_args.end, argv[0]);
+        return 1;
+    }
+    if(nfc_mfc_dict_file_args.file->count > 0)
+    {
+        file = nfc_mfc_dict_file_args.file->sval[0];
+    }
+
+    esp_err_t err = poom_nfc_dict_write_builtin(file, &written);
+    if(err != ESP_OK)
+    {
+        printf("  dict save failed (err=%d). Tip: ensure the SD card is "
+               "mounted.\r\n",
+               err);
+        return 1;
+    }
+    printf("  wrote %u built-in keys to %s%s/%s\r\n", (unsigned)written,
+           SD_CARD_PATH, POOM_NFC_DICT_DIR_REL,
+           (file != NULL) ? file : POOM_NFC_DICT_DEFAULT_FILE);
+    return 0;
+}
+
+static int cmd_nfc_mfc_dict_load(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&nfc_mfc_dict_file_args);
+    poom_nfc_dict_t* dict = poom_nfc_dict_active();
+
+    if(nerrors != 0)
+    {
+        arg_print_errors(stderr, nfc_mfc_dict_file_args.end, argv[0]);
+        printf("Uso: nfc-mfc-dict-load <file.dic>\r\n");
+        return 1;
+    }
+    if(nfc_mfc_dict_file_args.file->count == 0)
+    {
+        printf("  nfc-mfc-dict-load: a filename is required.\r\n");
+        return 1;
+    }
+
+    esp_err_t err =
+        poom_nfc_dict_load_file(nfc_mfc_dict_file_args.file->sval[0], dict);
+    if(err != ESP_OK)
+    {
+        printf("  dict load failed (err=%d). Tip: check the name with "
+               "nfc-mfc-dict-list.\r\n",
+               err);
+        return 1;
+    }
+
+    printf("  loaded '%s': %u key(s) active%s.\r\n", dict->name,
+           (unsigned)poom_nfc_dict_count(dict),
+           dict->truncated ? " (capped at 2048)" : "");
+    printf("  These keys are tried by nfc-mfc-dict-attack and MIFARE menu "
+           "reads.\r\n");
+    return 0;
+}
+
+static int cmd_nfc_mfc_dict_clear(int argc, char** argv)
+{
+    (void)argc;
+    (void)argv;
+    poom_nfc_dict_clear(poom_nfc_dict_active());
+    printf("  active dictionary cleared; only built-in keys will be tried.\r\n");
+    return 0;
+}
+
+static int cmd_nfc_mfc_dict_attack(int argc, char** argv)
+{
+    int nerrors = arg_parse(argc, argv, (void**)&nfc_mfc_dict_attack_args);
+    poom_nfc_dict_t* dict = poom_nfc_dict_active();
+    poom_nfc_dict_attack_result_t res;
+    bool try_b;
+
+    if(nerrors != 0)
+    {
+        arg_print_errors(stderr, nfc_mfc_dict_attack_args.end, argv[0]);
+        printf("Uso: nfc-mfc-dict-attack [-b] [file.dic]\r\n");
+        return 1;
+    }
+
+    try_b = (nfc_mfc_dict_attack_args.try_b->count > 0);
+
+    /* Optional inline file arg loads the active dictionary first. */
+    if(nfc_mfc_dict_attack_args.file->count > 0)
+    {
+        esp_err_t err = poom_nfc_dict_load_file(
+            nfc_mfc_dict_attack_args.file->sval[0], dict);
+        if(err != ESP_OK)
+        {
+            printf("  dict load failed (err=%d). Tip: nfc-mfc-dict-list to see "
+                   "names.\r\n",
+                   err);
+            return 1;
+        }
+        printf("  loaded '%s' (%u keys)\r\n", dict->name,
+               (unsigned)poom_nfc_dict_count(dict));
+    }
+
+    printf("  running dictionary attack (built-in + %u SD key(s), key %s)...\r\n",
+           (unsigned)poom_nfc_dict_count(dict), try_b ? "A+B" : "A");
+
+    if(!poom_nfc_dict_attack_run(dict, try_b, true, NULL, NULL, &res))
+    {
+        if(res.sectors == 0U)
+        {
+            printf("  no MIFARE Classic card found. Tip: run nfc-core-start "
+                   "then present a card (nfc-card-connect helps).\r\n");
+        }
+        else
+        {
+            printf("  no keys recovered for any of %u sectors.\r\n",
+                   res.sectors);
+        }
+        return 1;
+    }
+
+    printf("  unlocked %u/%u sectors (Key A: %u, Key B: %u) in %u auth "
+           "attempts.\r\n",
+           res.sectors_unlocked, res.sectors, res.keys_found_a,
+           res.keys_found_b, (unsigned)res.auth_attempts);
+    printf("  Keys are cached: nfc-mfc-read <block> / nfc-mfc-dump now work.\r\n");
+    return 0;
+}
+
 static void register_poom_nfc_cmds(void)
 {
     const esp_console_cmd_t nfc_start = {
@@ -4164,6 +4357,63 @@ static void register_poom_nfc_cmds(void)
         .argtable = &nfc_mfc_discover_args,
     };
     ESP_ERROR_CHECK(esp_console_cmd_register(&nfc_mfc_discover));
+
+    nfc_mfc_dict_file_args.file =
+        arg_str0(NULL, NULL, "<file.dic>", "dictionary filename on SD");
+    nfc_mfc_dict_file_args.end = arg_end(1);
+
+    const esp_console_cmd_t nfc_mfc_dict_list = {
+        .command = "nfc-mfc-dict-list",
+        .help    = "List MIFARE key dictionaries (.dic) on the SD card.",
+        .hint    = NULL,
+        .func    = &cmd_nfc_mfc_dict_list,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&nfc_mfc_dict_list));
+
+    const esp_console_cmd_t nfc_mfc_dict_save = {
+        .command  = "nfc-mfc-dict-save",
+        .help     = "Export the built-in default key dictionary to the SD card "
+                    "(default mf_default_keys.dic).",
+        .hint     = NULL,
+        .func     = &cmd_nfc_mfc_dict_save,
+        .argtable = &nfc_mfc_dict_file_args,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&nfc_mfc_dict_save));
+
+    const esp_console_cmd_t nfc_mfc_dict_load = {
+        .command  = "nfc-mfc-dict-load",
+        .help     = "Load an SD .dic file as the active dictionary. "
+                    "Example: nfc-mfc-dict-load mykeys.dic",
+        .hint     = NULL,
+        .func     = &cmd_nfc_mfc_dict_load,
+        .argtable = &nfc_mfc_dict_file_args,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&nfc_mfc_dict_load));
+
+    const esp_console_cmd_t nfc_mfc_dict_clear = {
+        .command = "nfc-mfc-dict-clear",
+        .help    = "Clear the active SD dictionary (keep built-in keys only).",
+        .hint    = NULL,
+        .func    = &cmd_nfc_mfc_dict_clear,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&nfc_mfc_dict_clear));
+
+    nfc_mfc_dict_attack_args.try_b =
+        arg_lit0("b", "try-b", "also try Key B per sector");
+    nfc_mfc_dict_attack_args.file =
+        arg_str0(NULL, NULL, "[file.dic]", "optional dictionary to load first");
+    nfc_mfc_dict_attack_args.end = arg_end(2);
+
+    const esp_console_cmd_t nfc_mfc_dict_attack = {
+        .command  = "nfc-mfc-dict-attack",
+        .help     = "Run a MIFARE Classic dictionary attack across all sectors "
+                    "using built-in + loaded SD keys. Example: "
+                    "nfc-mfc-dict-attack -b mykeys.dic",
+        .hint     = NULL,
+        .func     = &cmd_nfc_mfc_dict_attack,
+        .argtable = &nfc_mfc_dict_attack_args,
+    };
+    ESP_ERROR_CHECK(esp_console_cmd_register(&nfc_mfc_dict_attack));
 
     nfc_mfc_auth_args.block = arg_int1(NULL, NULL, "<block>", "block number (0..255)");
     nfc_mfc_auth_args.key   = arg_str1(NULL, NULL, "<key>", "6-byte key in hex");

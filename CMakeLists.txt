@@ -126,6 +126,7 @@ set(MODULES
     poom_breakout
     poom_menu
     poom_nfc
+    poom_nfc_dict
     poom_picopass
     poom_motion_midi
     poom_ble_hid
@@ -214,6 +215,7 @@ set(POOM_APPLICATION_DIRS
     ${CMAKE_SOURCE_DIR}/applications/poom_breakout
     ${CMAKE_SOURCE_DIR}/applications/poom_menu
     ${CMAKE_SOURCE_DIR}/applications/poom_nfc
+    ${CMAKE_SOURCE_DIR}/applications/poom_nfc_dict
     ${CMAKE_SOURCE_DIR}/applications/poom_picopass
     ${CMAKE_SOURCE_DIR}/applications/poom_motion_midi
     ${CMAKE_SOURCE_DIR}/applications/poom_ble_hid
