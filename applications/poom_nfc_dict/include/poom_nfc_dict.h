@@ -96,6 +96,23 @@ esp_err_t poom_nfc_dict_load_file(const char* filename, poom_nfc_dict_t* dict);
  */
 esp_err_t poom_nfc_dict_write_builtin(const char* filename, size_t* out_written);
 
+/**
+ * @brief Write a dictionary's keys to an editable ".dic" file on the SD card.
+ *
+ * Same format as poom_nfc_dict_write_builtin(), but persists the keys held in
+ * @p dict (for example keys recovered live by the KEYS scene), so they can be
+ * reloaded and reused later.
+ *
+ * @param[in] filename Target name under POOM_NFC_DICT_DIR_REL, or an absolute
+ *            SD path beginning with '/'.
+ * @param[in] dict Source dictionary.
+ * @param[out] out_written Optional count of keys written.
+ * @return ESP_OK on success.
+ */
+esp_err_t poom_nfc_dict_save_file(const char* filename,
+                                  const poom_nfc_dict_t* dict,
+                                  size_t* out_written);
+
 /** Callback for poom_nfc_dict_list_files(); return false to stop early. */
 typedef bool (*poom_nfc_dict_list_cb_t)(const char* filename,
                                         size_t size_bytes,

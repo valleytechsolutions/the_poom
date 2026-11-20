@@ -241,9 +241,9 @@ static void menu_nfc_keys_draw_done_(void)
     (void)poom_arduboy_print(s_status);
 
     poom_arduboy_set_cursor(0, 56);
-    (void)poom_arduboy_print(F("A:DUMP >:DATA"));
-    poom_arduboy_set_cursor(97, 56);
-    (void)poom_arduboy_print(F("B:BK"));
+    (void)poom_arduboy_print(F("A:DMP >:DAT v:KEYS"));
+    poom_arduboy_set_cursor(110, 56);
+    (void)poom_arduboy_print(F("B"));
     poom_arduboy_display();
 }
 
@@ -477,6 +477,41 @@ static void menu_nfc_keys_recover_(void)
     /* RF left live so DUMP can reuse the bound card/keys. */
 }
 
+/* Fold every recovered sector key into the active dictionary and persist it
+ * to SD, so the keys are reused by later attacks and survive a power cycle. */
+static void menu_nfc_keys_save_keys_(void)
+{
+    size_t added = 0U;
+    size_t written = 0U;
+
+    for(uint8_t s = 0U; s < s_sec_cnt; s++)
+    {
+        if(s_a_known[s] && poom_nfc_dict_add_key(poom_nfc_dict_active(),
+                                                 s_a_key[s]))
+        {
+            added++;
+        }
+        if(s_b_known[s] && poom_nfc_dict_add_key(poom_nfc_dict_active(),
+                                                 s_b_key[s]))
+        {
+            added++;
+        }
+    }
+    (void)added;
+
+    const esp_err_t err = poom_nfc_dict_save_file(
+        "recovered.dic", poom_nfc_dict_active(), &written);
+    if(err == ESP_OK)
+    {
+        (void)snprintf(s_status, sizeof(s_status), "SAVED %u KEYS",
+                       (unsigned)written);
+    }
+    else
+    {
+        (void)snprintf(s_status, sizeof(s_status), "SAVE FAIL");
+    }
+}
+
 static void menu_nfc_keys_dump_(void)
 {
     char path[96];
@@ -621,6 +656,14 @@ static void menu_nfc_keys_ui_task_(void* arg)
                     s_view_block = 0U;
                     s_state = KEYS_STATE_VIEW;
                     menu_nfc_keys_draw_view_();
+                }
+            }
+            else if(msg.button == BTN_DOWN)
+            {
+                if(s_unlocked > 0U)
+                {
+                    menu_nfc_keys_save_keys_();
+                    menu_nfc_keys_draw_done_();
                 }
             }
             else if(msg.button == BTN_UP)

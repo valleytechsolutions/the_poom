@@ -300,6 +300,70 @@ esp_err_t poom_nfc_dict_write_builtin(const char* filename, size_t* out_written)
     return ESP_OK;
 }
 
+esp_err_t poom_nfc_dict_save_file(const char* filename,
+                                  const poom_nfc_dict_t* dict,
+                                  size_t* out_written)
+{
+    char abs_path[160];
+    FILE* f;
+    const size_t n = poom_nfc_dict_count(dict);
+    size_t written = 0U;
+
+    if(out_written != NULL)
+    {
+        *out_written = 0U;
+    }
+    if((filename == NULL) || (dict == NULL))
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if(sd_card_is_not_mounted())
+    {
+        ESP_LOGE(TAG, "SD card not mounted");
+        return ESP_FAIL;
+    }
+
+    (void)sd_card_create_dir("/nfc");
+    (void)sd_card_create_dir(POOM_NFC_DICT_DIR_REL);
+
+    poom_nfc_dict_build_abs_(filename, abs_path, sizeof(abs_path));
+
+    f = fopen(abs_path, "w");
+    if(f == NULL)
+    {
+        ESP_LOGE(TAG, "create failed: %s", abs_path);
+        return ESP_FAIL;
+    }
+
+    (void)fprintf(f, "# POOM MIFARE Classic key dictionary\r\n");
+    (void)fprintf(f, "# One 6-byte key per line (12 hex chars). Edit freely.\r\n");
+
+    for(size_t i = 0U; i < n; i++)
+    {
+        const uint8_t* k = poom_nfc_dict_get(dict, i);
+        if(k == NULL)
+        {
+            continue;
+        }
+        if(fprintf(f, "%02X%02X%02X%02X%02X%02X\r\n", k[0], k[1], k[2], k[3],
+                   k[4], k[5]) < 0)
+        {
+            (void)fclose(f);
+            ESP_LOGE(TAG, "write error at key %u", (unsigned)i);
+            return ESP_FAIL;
+        }
+        written++;
+    }
+
+    (void)fclose(f);
+    if(out_written != NULL)
+    {
+        *out_written = written;
+    }
+    ESP_LOGI(TAG, "saved %u keys to %s", (unsigned)written, abs_path);
+    return ESP_OK;
+}
+
 static bool poom_nfc_dict_has_dic_ext_(const char* name)
 {
     const size_t len = strlen(name);
