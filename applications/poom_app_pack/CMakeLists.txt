@@ -145,3 +145,5 @@ set_source_files_properties(
     "${COMPONENT_DIR}/src/poom_handshake_crack.c"
     PROPERTIES COMPILE_OPTIONS "-O2"
 )
+
+# touch: re-glob sources (menu_nfc_dict_ui.c)

@@ -3,6 +3,7 @@
 
 #include "menu_nfc.h"
 #include "menu_nfc_keys.h"
+#include "menu_nfc_dict_ui.h"
 
 #include <errno.h>
 #include <ctype.h>
@@ -146,6 +147,7 @@ typedef enum
     MENU_NFC_OPT_EMULATE,
     MENU_NFC_OPT_RESTORE,
     MENU_NFC_OPT_KEYS,
+    MENU_NFC_OPT_DICT,
     MENU_NFC_OPT_STORAGE,
     MENU_NFC_OPT_COUNT,
 } menu_nfc_opt_t;
@@ -186,6 +188,7 @@ static const char* menu_nfc_main_option_label_(menu_nfc_opt_t option)
         case MENU_NFC_OPT_EMULATE: return "EMULATE";
         case MENU_NFC_OPT_RESTORE: return "RESTORE MFC";
         case MENU_NFC_OPT_KEYS: return "KEYS";
+        case MENU_NFC_OPT_DICT: return "DICT";
         case MENU_NFC_OPT_STORAGE: return "STORAGE";
         default: return "";
     }
@@ -201,7 +204,7 @@ static bool s_menu_nfc_mifare_read_requested = false;
 static volatile bool s_menu_nfc_t2t_read_active = false;
 static bool s_menu_nfc_t2t_read_requested = false;
 static bool s_menu_nfc_restore_requested = false;
-static bool s_menu_nfc_launch_keys = false;    /* hand off to the KEYS scene   */
+static void (*s_menu_nfc_pending_launch)(void) = NULL; /* scene to hand off to  */
 static bool s_menu_nfc_suppress_resume = false; /* skip ZEN resume on handoff  */
 static TaskHandle_t s_menu_nfc_ui_task = NULL;
 static char s_menu_nfc_sbus_user[] = "menu_nfc";
@@ -6174,7 +6177,13 @@ static void menu_nfc_button_cb_(const poom_sbus_msg_t *msg, void *user_ctx)
                 /* Hand off to the standalone MIFARE key-recovery scene. Tear
                  * this menu down without re-attaching ZEN; the scene owns the
                  * display + buttons and returns to ZEN when it exits. */
-                s_menu_nfc_launch_keys = true;
+                s_menu_nfc_pending_launch = menu_nfc_keys_show;
+                s_menu_nfc_suppress_resume = true;
+                s_menu_nfc_exit_requested = true;
+            }
+            else if(s_opt == MENU_NFC_OPT_DICT)
+            {
+                s_menu_nfc_pending_launch = menu_nfc_dict_ui_show;
                 s_menu_nfc_suppress_resume = true;
                 s_menu_nfc_exit_requested = true;
             }
@@ -6678,13 +6687,13 @@ static void menu_nfc_ui_task_(void *arg)
     {
         if (s_menu_nfc_exit_requested)
         {
-            const bool launch_keys = s_menu_nfc_launch_keys;
+            void (*launch)(void) = s_menu_nfc_pending_launch;
             menu_nfc_exit_();
-            s_menu_nfc_launch_keys = false;
+            s_menu_nfc_pending_launch = NULL;
             s_menu_nfc_suppress_resume = false;
-            if(launch_keys)
+            if(launch != NULL)
             {
-                menu_nfc_keys_show();
+                launch();
             }
             break;
         }
@@ -6845,7 +6854,7 @@ void menu_nfc_show(void)
 
     s_menu_nfc_active = true;
     s_menu_nfc_exit_requested = false;
-    s_menu_nfc_launch_keys = false;
+    s_menu_nfc_pending_launch = NULL;
     s_menu_nfc_suppress_resume = false;
     s_menu_nfc_scan_requested = false;
     s_menu_nfc_scan_cancel_requested = false;
