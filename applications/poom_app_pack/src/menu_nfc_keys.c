@@ -557,11 +557,14 @@ static void menu_nfc_keys_button_cb_(const poom_sbus_msg_t* msg, void* user_ctx)
     button_event_msg_t ev;
     memcpy(&ev, msg->data, sizeof(ev));
 
-    /* During an active attack, a B press cancels cooperatively right away. */
+    /* During an active attack, a B press cancels cooperatively right away.
+     * Consume it here so it is NOT also queued as an exit for the DONE screen
+     * (otherwise the one press both stops the attack and leaves the scene). */
     if(s_state == KEYS_STATE_RECOVER && ev.event == BUTTON_SINGLE_CLICK &&
        ev.button == BTN_B)
     {
         s_cancel_requested = true;
+        return;
     }
 
     menu_nfc_keys_button_msg_t qmsg = {.button = ev.button, .event = ev.event};
@@ -590,18 +593,20 @@ static void menu_nfc_keys_exit_(void)
         }
     }
 
-    if(s_btn_q != NULL)
-    {
-        QueueHandle_t q = s_btn_q;
-        s_btn_q = NULL;
-        vQueueDelete(q);
-    }
-
+    /* Unsubscribe BEFORE freeing the queue so no in-flight button callback
+     * can xQueueSend to a freed queue. */
     if(s_buttons_subscribed)
     {
         (void)poom_sbus_unsubscribe_cb("input/button",
                                        menu_nfc_keys_button_cb_, s_sbus_user);
         s_buttons_subscribed = false;
+    }
+
+    if(s_btn_q != NULL)
+    {
+        QueueHandle_t q = s_btn_q;
+        s_btn_q = NULL;
+        vQueueDelete(q);
     }
 
     const uint8_t token = 1;

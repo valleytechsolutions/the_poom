@@ -266,18 +266,20 @@ static void menu_nfc_dict_exit_(void)
         }
     }
 
-    if(s_btn_q != NULL)
-    {
-        QueueHandle_t q = s_btn_q;
-        s_btn_q = NULL;
-        vQueueDelete(q);
-    }
-
+    /* Unsubscribe BEFORE freeing the queue so no in-flight button callback
+     * can xQueueSend to a freed queue. */
     if(s_buttons_subscribed)
     {
         (void)poom_sbus_unsubscribe_cb("input/button",
                                        menu_nfc_dict_button_cb_, s_sbus_user);
         s_buttons_subscribed = false;
+    }
+
+    if(s_btn_q != NULL)
+    {
+        QueueHandle_t q = s_btn_q;
+        s_btn_q = NULL;
+        vQueueDelete(q);
     }
 
     const uint8_t token = 1;

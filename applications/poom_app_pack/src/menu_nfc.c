@@ -1881,7 +1881,17 @@ static void menu_nfc_draw_main_(void)
 {
     menu_nfc_draw_frame_("NFC");
 
-    const int first = ((int)s_opt >= 4) ? 1 : 0;
+    /* Scroll the 4-row window so the selected option is always visible,
+     * clamped to the option count (works for any number of options). */
+    int first = ((int)s_opt >= 3) ? ((int)s_opt - 3) : 0;
+    if (first > (int)MENU_NFC_OPT_COUNT - 4)
+    {
+        first = (int)MENU_NFC_OPT_COUNT - 4;
+    }
+    if (first < 0)
+    {
+        first = 0;
+    }
     for (int visible = 0; visible < 4; visible++)
     {
         const int row = first + visible;
