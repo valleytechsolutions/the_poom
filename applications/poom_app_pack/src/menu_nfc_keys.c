@@ -247,6 +247,38 @@ static void menu_nfc_keys_draw_done_(void)
     poom_arduboy_display();
 }
 
+/* Detect a MIFARE Classic value block and decode its signed value.
+ * Layout: [val LE][~val][val][addr][~addr][addr][~addr] (bytes 0-3, 4-7, 8-11,
+ * 12,13,14,15). Returns true and sets *out_value when the block is valid. */
+static bool menu_nfc_keys_value_block_(const uint8_t d[16], int32_t* out_value)
+{
+    for(uint8_t i = 0U; i < 4U; i++)
+    {
+        if(d[i] != d[i + 8U])
+        {
+            return false;
+        }
+        if(d[i] != (uint8_t)~d[i + 4U])
+        {
+            return false;
+        }
+    }
+    if((d[12] != d[14]) || (d[13] != d[15]))
+    {
+        return false;
+    }
+    if((d[12] != (uint8_t)~d[13]))
+    {
+        return false;
+    }
+    if(out_value != NULL)
+    {
+        *out_value = (int32_t)((uint32_t)d[0] | ((uint32_t)d[1] << 8) |
+                               ((uint32_t)d[2] << 16) | ((uint32_t)d[3] << 24));
+    }
+    return true;
+}
+
 /* On-screen block/data viewer: read the selected block with the recovered
  * keys and show its 16 bytes. Requires RF still live (left up after recover). */
 static void menu_nfc_keys_draw_view_(void)
@@ -282,6 +314,14 @@ static void menu_nfc_keys_draw_view_(void)
                        data[12], data[13], data[14], data[15]);
         poom_arduboy_set_cursor(2, 36);
         (void)poom_arduboy_print(line);
+
+        int32_t value = 0;
+        if(menu_nfc_keys_value_block_(data, &value))
+        {
+            (void)snprintf(line, sizeof(line), "VALUE: %ld", (long)value);
+            poom_arduboy_set_cursor(2, 46);
+            (void)poom_arduboy_print(line);
+        }
     }
     else
     {
