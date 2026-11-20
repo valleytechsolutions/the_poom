@@ -45,6 +45,7 @@ set(POOM_APP_PACK_REQUIRES
     ir
     mbedtls
     poom_nfc
+    poom_nfc_dict
     poom_picopass
     poom_motion_midi
     poom_ble_keyboard
@@ -144,3 +145,5 @@ set_source_files_properties(
     "${COMPONENT_DIR}/src/poom_handshake_crack.c"
     PROPERTIES COMPILE_OPTIONS "-O2"
 )
+
+# touch: re-glob sources (menu_nfc_dict_ui.c)

@@ -78,9 +78,15 @@ try {
         $idfArguments += 'reconfigure'
     }
     $idfArguments += $Action
+    # ESP-IDF prints Kconfig and component-manager notes on stderr. Windows
+    # PowerShell 5.1 turns redirected native stderr into error records, which
+    # 'Stop' would treat as fatal; rely on the exit code instead.
+    $ErrorActionPreference = 'Continue'
     & $idfPython @idfArguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "ESP-IDF $Action failed with exit code $LASTEXITCODE"
+    $idfExitCode = $LASTEXITCODE
+    $ErrorActionPreference = 'Stop'
+    if ($idfExitCode -ne 0) {
+        throw "ESP-IDF $Action failed with exit code $idfExitCode"
     }
 } finally {
     foreach ($name in $environmentNames) {
